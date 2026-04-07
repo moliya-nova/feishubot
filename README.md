@@ -102,3 +102,7 @@ curl -X POST http://127.0.0.1:8000/api/llm/chat \
 - 增加签名校验与加解密
 - 增加指令路由（如 `/plan`、`/run`）
 - 持久化会话上下文（Redis / PostgreSQL）
+
+## 7. License
+
+本项目使用 Apache-2.0 许可证，详见 `LICENSE`。
