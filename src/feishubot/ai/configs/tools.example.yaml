@@ -1,0 +1,9 @@
+enabled_tools:
+  - web_search
+  - calculator
+
+routing:
+  web_search:
+    timeout_seconds: 20
+  calculator:
+    timeout_seconds: 5
