@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from feishubot.app import get_llm_client
-from feishubot.llm_client import OpenAICompatibleLLMClient
 from feishubot.config import settings
-
+from feishubot.llm_client import OpenAICompatibleLLMClient
 
 LLM_PRESETS: dict[str, dict[str, str]] = {
     "qwen": {
@@ -33,7 +32,9 @@ LLM_PRESETS: dict[str, dict[str, str]] = {
 
 
 def _add_chat_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--user-id", default="terminal-user", help="User ID passed to the LLM backend")
+    parser.add_argument(
+        "--user-id", default="terminal-user", help="User ID passed to the LLM backend"
+    )
     parser.add_argument(
         "--system-prompt",
         default=None,
@@ -49,13 +50,23 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_chat_arguments(chat_parser)
 
     gateway_parser = subparsers.add_parser("gateway", help="Start HTTP gateway service")
-    gateway_parser.add_argument("--host", default="0.0.0.0", help="Gateway bind host")
+    gateway_parser.add_argument(
+        "--host",
+        default="0.0.0.0",  # noqa: S104 - intentional default for dev/container access
+        help="Gateway bind host",
+    )
     gateway_parser.add_argument("--port", type=int, default=8000, help="Gateway bind port")
-    gateway_parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+    gateway_parser.add_argument(
+        "--reload", action="store_true", help="Enable auto-reload for development"
+    )
 
     setup_parser = subparsers.add_parser("setup", help="Interactive quick setup for .env")
-    setup_parser.add_argument("--env-file", default=".env", help="Path to the environment file to create/update")
-    setup_parser.add_argument("--yes", action="store_true", help="Skip overwrite confirmation if env file exists")
+    setup_parser.add_argument(
+        "--env-file", default=".env", help="Path to the environment file to create/update"
+    )
+    setup_parser.add_argument(
+        "--yes", action="store_true", help="Skip overwrite confirmation if env file exists"
+    )
 
     return parser
 
@@ -123,7 +134,7 @@ def _load_env_file(path: Path) -> dict[str, str]:
 
 
 def _format_env_value(value: str) -> str:
-    needs_quote = any(ch.isspace() for ch in value) or any(ch in value for ch in ['#', '"', "'"])
+    needs_quote = any(ch.isspace() for ch in value) or any(ch in value for ch in ["#", '"', "'"])
     if not needs_quote:
         return value
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -208,7 +219,9 @@ def _run_setup(args: argparse.Namespace) -> None:
         values["LLM_MODEL"] = preset["model"]
         values["LLM_CHAT_PATH"] = preset["chat_path"]
         values["LLM_API_KEY"] = _prompt_secret("LLM_API_KEY", current.get("LLM_API_KEY", ""))
-        values["LLM_TIMEOUT_SECONDS"] = _prompt_text("LLM_TIMEOUT_SECONDS", current.get("LLM_TIMEOUT_SECONDS", "60"))
+        values["LLM_TIMEOUT_SECONDS"] = _prompt_text(
+            "LLM_TIMEOUT_SECONDS", current.get("LLM_TIMEOUT_SECONDS", "60")
+        )
         values["LLM_SYSTEM_PROMPT"] = _prompt_text(
             "LLM_SYSTEM_PROMPT",
             current.get("LLM_SYSTEM_PROMPT", "You are a helpful assistant."),

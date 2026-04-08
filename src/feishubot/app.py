@@ -30,7 +30,9 @@ def get_llm_client() -> LLMClient:
         )
     if settings.llm_provider == "echo":
         return EchoLLMClient()
-    raise HTTPException(status_code=500, detail=f"unsupported LLM provider: {settings.llm_provider}")
+    raise HTTPException(
+        status_code=500, detail=f"unsupported LLM provider: {settings.llm_provider}"
+    )
 
 
 class ChatRequest(BaseModel):
@@ -107,8 +109,10 @@ async def handle_feishu_events(request: Request) -> dict[str, Any]:
     llm_client = get_llm_client()
     reply = await llm_client.generate_reply(prompt=text, user_id=user_open_id)
 
-    # For private chat or group where bot can directly send by chat_id, adjust receive_id_type as needed.
+    # For private/group chat replies, send by chat_id. Adjust receive_id_type if needed.
     if chat_id:
-        await feishu_client.send_text_message(receive_id=chat_id, text=reply, receive_id_type="chat_id")
+        await feishu_client.send_text_message(
+            receive_id=chat_id, text=reply, receive_id_type="chat_id"
+        )
 
     return {"ok": True}
