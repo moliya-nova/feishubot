@@ -33,25 +33,35 @@ feishubot/
 ## 2. 快速开始
 
 1. 创建并激活虚拟环境
-2. 安装依赖：
+2. 安装uv依赖：
 
 ```bash
-pip install -e .
+pipx install uv
 ```
 
-3. 复制环境变量：
+3. 开启虚拟环境(python版本3.14)：
 
 ```bash
-cp .env.example .env
+uv venv --python 3.14
 ```
 
-4. 启动网关服务：
+```bash
+.venv\Scripts\Activate
+```
+
+4. 安装项目依赖：
+
+```bash
+uv sync
+```
+
+5. 启动网关服务：
 
 ```bash
 feishubot gateway --reload --host 0.0.0.0 --port 8000
 ```
 
-5. 快速配置（推荐首次执行）：
+6. 快速配置（推荐首次执行）：
 
 ```bash
 feishubot setup
