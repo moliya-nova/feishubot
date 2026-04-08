@@ -5,7 +5,9 @@ import asyncio
 import json
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
+from feishubot.ai.tools import ToolRuntime
 from feishubot.app import get_llm_client
 from feishubot.config import settings
 from feishubot.llm_client import OpenAICompatibleLLMClient
@@ -383,15 +385,108 @@ def _run_model_switch(args: argparse.Namespace) -> None:
     print("Restart 'feishubot chat' or gateway to apply the new model.")
 
 
+def _strip_code_fences(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    lines = [line for line in stripped.splitlines() if not line.startswith("```")]
+    return "\n".join(lines).strip()
+
+
+def _extract_tool_call(text: str) -> tuple[str, dict[str, Any]] | None:
+    payload_text = _strip_code_fences(text)
+    try:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    tool_name = payload.get("tool") or payload.get("name")
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        return None
+
+    arguments = payload.get("arguments") or payload.get("args") or {}
+    if not isinstance(arguments, dict):
+        return None
+
+    return tool_name.strip(), arguments
+
+
+def _parse_direct_tool_command(user_input: str) -> tuple[str, dict[str, Any]] | None:
+    stripped = user_input.strip()
+    if stripped.startswith("/terminal ") or stripped.startswith("/shell "):
+        command = stripped.split(" ", 1)[1].strip()
+        return "terminal", {"command": command}
+
+    if not stripped.startswith("/tool "):
+        return None
+
+    remainder = stripped.split(" ", 1)[1].strip()
+    if not remainder:
+        return None
+    if " " not in remainder:
+        return remainder, {}
+
+    tool_name, payload_text = remainder.split(" ", 1)
+    payload_text = payload_text.strip()
+    if payload_text.startswith("{"):
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            payload = {"command": payload_text}
+        if isinstance(payload, dict):
+            return tool_name, payload
+
+    if tool_name == "calculator":
+        return tool_name, {"expression": payload_text}
+    return tool_name, {"command": payload_text}
+
+
+async def _generate_model_reply(
+    llm_client: OpenAICompatibleLLMClient | Any,
+    *,
+    prompt: str,
+    user_id: str,
+    system_prompt: str | None,
+) -> str:
+    if isinstance(llm_client, OpenAICompatibleLLMClient) and system_prompt:
+        return await llm_client.generate_reply_with_system_prompt(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            user_id=user_id,
+        )
+    return await llm_client.generate_reply(prompt=prompt, user_id=user_id)
+
+
+def _build_tool_routing_prompt(
+    *,
+    user_input: str,
+    tool_runtime: ToolRuntime,
+) -> str:
+    tool_catalog = tool_runtime.render_tool_catalog()
+    return (
+        "You can answer directly or call one tool.\n"
+        f"{tool_catalog}\n\n"
+        "If a tool is needed, respond with exactly one JSON object:\n"
+        '{"tool": "terminal", "arguments": {"command": "df -h"}}\n\n'
+        "If no tool is needed, answer normally.\n\n"
+        f"User request:\n{user_input}"
+    )
+
+
 async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
     active = settings.active_llm_config()
     llm_client = get_llm_client()
+    tool_runtime = ToolRuntime()
 
     print("FeishuBot terminal chat is ready.")
     if active.provider == "echo":
         print("Using model: echo")
     else:
         print(f"Using model: {active.model}")
+    print("Tool shortcuts: /terminal <command>, /tool <name> <payload>")
     print("Type your message and press Enter. Use /exit to quit.")
 
     while True:
@@ -409,19 +504,50 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
             break
 
         try:
-            if isinstance(llm_client, OpenAICompatibleLLMClient) and system_prompt:
-                reply = await llm_client.generate_reply_with_system_prompt(
-                    prompt=user_input,
-                    system_prompt=system_prompt,
-                    user_id=user_id,
-                )
-            else:
-                reply = await llm_client.generate_reply(prompt=user_input, user_id=user_id)
+            direct_tool_call = _parse_direct_tool_command(user_input)
+            if direct_tool_call is not None:
+                tool_name, arguments = direct_tool_call
+                tool_result = await tool_runtime.execute(tool_name, arguments)
+                print(f"bot> {tool_runtime.format_result(tool_name, tool_result)}")
+                continue
+
+            first_prompt = _build_tool_routing_prompt(
+                user_input=user_input,
+                tool_runtime=tool_runtime,
+            )
+            first_reply = await _generate_model_reply(
+                llm_client,
+                prompt=first_prompt,
+                user_id=user_id,
+                system_prompt=system_prompt,
+            )
+
+            tool_call = _extract_tool_call(first_reply)
+            if tool_call is None:
+                print(f"bot> {first_reply}")
+                continue
+
+            tool_name, arguments = tool_call
+            tool_result = await tool_runtime.execute(tool_name, arguments)
+            formatted_result = tool_runtime.format_result(tool_name, tool_result)
+
+            second_prompt = (
+                f"User request:\n{user_input}\n\n"
+                f"Tool called: {tool_name}\n"
+                f"Tool arguments:\n{json.dumps(arguments, ensure_ascii=False, indent=2)}\n\n"
+                f"Tool result:\n{formatted_result}\n\n"
+                "Now answer the user based on the tool result."
+            )
+            final_reply = await _generate_model_reply(
+                llm_client,
+                prompt=second_prompt,
+                user_id=user_id,
+                system_prompt=system_prompt,
+            )
+            print(f"bot> {final_reply}")
         except Exception as exc:  # noqa: BLE001
             print(f"bot(error)> {exc}")
             continue
-
-        print(f"bot> {reply}")
 
 
 def _run_chat(args: argparse.Namespace) -> None:
