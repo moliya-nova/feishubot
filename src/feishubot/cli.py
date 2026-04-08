@@ -286,9 +286,14 @@ def _run_setup(args: argparse.Namespace) -> None:
 
 
 async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
+    active = settings.active_llm_config()
     llm_client = get_llm_client()
 
     print("FeishuBot terminal chat is ready.")
+    if active.provider == "echo":
+        print("Using model: echo")
+    else:
+        print(f"Using model: {active.model}")
     print("Type your message and press Enter. Use /exit to quit.")
 
     while True:

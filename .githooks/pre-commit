@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+if [ -x "$REPO_ROOT/.venv/bin/python" ]; then
+  RUFF_CMD="$REPO_ROOT/.venv/bin/python -m ruff"
+elif command -v ruff >/dev/null 2>&1; then
+  RUFF_CMD="ruff"
+else
+  echo "[pre-commit] Ruff not found. Install it first (e.g. pip install ruff)."
+  exit 1
+fi
+
+echo "[pre-commit] Running Ruff format check..."
+sh -c "$RUFF_CMD format --check ."
+
+echo "[pre-commit] Running Ruff lint check..."
+sh -c "$RUFF_CMD check ."
+
+echo "[pre-commit] All checks passed."
