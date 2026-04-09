@@ -2,7 +2,7 @@
 
 ## Top-level Layout
 
-- `src/feishubot/`: application source code
+- `src/feishubot/`: source code
 - `docs/`: architecture and design notes
 - `pyproject.toml`: packaging, dependencies, and tooling configuration
 - `README.md`: user-facing project overview and quick start
@@ -19,6 +19,7 @@
 
 - `src/feishubot/config.py`: environment-backed settings and active LLM resolution
 - `src/feishubot/feishu.py`: Feishu API client
+- `src/feishubot/llm_client.py`: prompt-based LLM client and compatibility reference for the earlier chat flow
 
 ### LLM and agent system
 
