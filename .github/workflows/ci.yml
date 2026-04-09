@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -37,6 +39,11 @@ jobs:
       - name: Ruff lint and security check
         run: |
           ruff check . --output-format=github
+
+      - name: Architecture guard (PR only)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          python scripts/ci_arch_guard.py --base-ref "${{ github.base_ref }}"
 
       - name: Sanity check imports
         run: |
