@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import tomllib
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-import yaml
-
 from feishubot.ai.core.errors import ToolNotFoundError
 from feishubot.ai.tools.base import Tool
-from feishubot.ai.tools.builtins import register_builtin_tools
+from feishubot.ai.tools.builtins import TerminalCommandTool, register_builtin_tools
 from feishubot.ai.tools.registry import tool_registry
 from feishubot.config import settings
 
@@ -29,25 +30,51 @@ class ToolRoutingConfig:
     timeout_seconds: float | None = None
 
 
+@dataclass(slots=True)
+class TerminalPolicyConfig:
+    blocked_commands: tuple[str, ...] = ()
+
+
+@dataclass(slots=True)
+class AsyncExecutionState:
+    invocation_id: str
+    name: str
+    arguments: dict[str, Any]
+    task: asyncio.Task[dict[str, Any]]
+
+
 class ToolRuntime:
+    _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[4] / "tools.default.toml"
+
     def __init__(self, config_path: str | None = None) -> None:
         register_builtin_tools()
         self._enabled_tools: set[str] | None = None
         self._routing: dict[str, ToolRoutingConfig] = {}
+        self._terminal_policy = TerminalPolicyConfig()
+        self._async_invocations: dict[str, AsyncExecutionState] = {}
+        self._apply_terminal_policy()
 
-        resolved_config_path = config_path or settings.ai_tools_config_path
-        if resolved_config_path:
-            self._load_config(Path(resolved_config_path).expanduser().resolve())
+        resolved_config_path = self._resolve_config_path(config_path)
+        if resolved_config_path is not None:
+            self._load_config(resolved_config_path)
+
+    def _resolve_config_path(self, config_path: str | None) -> Path | None:
+        configured_path = (config_path or settings.ai_tools_config_path).strip()
+        if configured_path:
+            return Path(configured_path).expanduser().resolve()
+
+        if self._DEFAULT_CONFIG_PATH.exists():
+            return self._DEFAULT_CONFIG_PATH
+
+        return None
 
     def _load_config(self, config_path: Path) -> None:
         if not config_path.exists():
             raise ValueError(f"tool config file not found: {config_path}")
 
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        if raw is None:
-            return
+        raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
-            raise ValueError("tool config must be a YAML object")
+            raise ValueError("tool config must be a TOML table")
 
         enabled_tools = raw.get("enabled_tools")
         if enabled_tools is not None:
@@ -82,6 +109,28 @@ class ToolRuntime:
                 )
 
             self._routing = parsed_routing
+
+        terminal_raw = raw.get("terminal")
+        if terminal_raw is not None:
+            if not isinstance(terminal_raw, dict):
+                raise ValueError("terminal must be an object")
+            blocked_commands_raw = terminal_raw.get("blocked_commands", [])
+            if not isinstance(blocked_commands_raw, list) or not all(
+                isinstance(item, str) for item in blocked_commands_raw
+            ):
+                raise ValueError("terminal.blocked_commands must be a list of strings")
+
+            blocked_commands = tuple(
+                command.strip() for command in blocked_commands_raw if command.strip()
+            )
+            self._terminal_policy = TerminalPolicyConfig(blocked_commands=blocked_commands)
+            self._apply_terminal_policy()
+
+    def _apply_terminal_policy(self) -> None:
+        terminal_tool = tool_registry.get(TerminalCommandTool.name)
+        if terminal_tool is None or not isinstance(terminal_tool, TerminalCommandTool):
+            return
+        terminal_tool.configure_blocked_commands(list(self._terminal_policy.blocked_commands))
 
     def _is_tool_enabled(self, name: str) -> bool:
         if self._enabled_tools is None:
@@ -130,15 +179,102 @@ class ToolRuntime:
         logger.info("tool execution succeeded: name=%s duration_ms=%s", name, elapsed_ms)
         return result
 
+    async def execute_async(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        invocation_id = str(uuid.uuid4())
+        task = asyncio.create_task(self.execute(name, arguments))
+        self._async_invocations[invocation_id] = AsyncExecutionState(
+            invocation_id=invocation_id,
+            name=name,
+            arguments=dict(arguments or {}),
+            task=task,
+        )
+        return {
+            "invocation_id": invocation_id,
+            "name": name,
+            "status": "running",
+        }
+
+    async def get_async_result(
+        self,
+        invocation_id: str,
+        *,
+        wait: bool = False,
+        timeout_seconds: float | None = None,
+        clear_after_read: bool = True,
+    ) -> dict[str, Any]:
+        state = self._async_invocations.get(invocation_id)
+        if state is None:
+            raise ToolNotFoundError(f"async invocation not found: {invocation_id}")
+
+        if wait and not state.task.done():
+            try:
+                if timeout_seconds is None:
+                    await state.task
+                else:
+                    await asyncio.wait_for(state.task, timeout_seconds)
+            except TimeoutError:
+                return {
+                    "invocation_id": invocation_id,
+                    "name": state.name,
+                    "status": "running",
+                }
+            except Exception as exc:  # noqa: BLE001
+                payload = {
+                    "invocation_id": invocation_id,
+                    "name": state.name,
+                    "status": "failed",
+                    "error": str(exc),
+                }
+                if clear_after_read:
+                    self._async_invocations.pop(invocation_id, None)
+                return payload
+
+        if not state.task.done():
+            return {
+                "invocation_id": invocation_id,
+                "name": state.name,
+                "status": "running",
+            }
+
+        try:
+            result = state.task.result()
+        except Exception as exc:  # noqa: BLE001
+            payload = {
+                "invocation_id": invocation_id,
+                "name": state.name,
+                "status": "failed",
+                "error": str(exc),
+            }
+        else:
+            payload = {
+                "invocation_id": invocation_id,
+                "name": state.name,
+                "status": "completed",
+                "result": result,
+            }
+
+        if clear_after_read:
+            self._async_invocations.pop(invocation_id, None)
+        return payload
+
     @staticmethod
     def format_result(name: str, result: dict[str, Any]) -> str:
         if name == "terminal":
+            status = result.get("status")
+            task_id = result.get("task_id")
             stdout = str(result.get("stdout", "")).rstrip()
             stderr = str(result.get("stderr", "")).rstrip()
             exit_code = result.get("exit_code")
             timed_out = result.get("timed_out")
 
-            lines = [f"exit_code: {exit_code}", f"timed_out: {timed_out}"]
+            lines: list[str] = []
+            if task_id is not None:
+                lines.append(f"task_id: {task_id}")
+            if status is not None:
+                lines.append(f"status: {status}")
+            lines.extend([f"exit_code: {exit_code}", f"timed_out: {timed_out}"])
             lines.append("stdout:")
             lines.append(stdout or "<empty>")
             lines.append("stderr:")

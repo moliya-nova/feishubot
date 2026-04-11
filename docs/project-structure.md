@@ -33,7 +33,7 @@
 - `src/feishubot/ai/orchestrator/`: model-tool execution loop
 - `src/feishubot/ai/tools/`: tool base classes, runtime, registry, and built-ins
 - `src/feishubot/ai/prompts/`: system prompt templates
-- `src/feishubot/ai/configs/`: sample YAML configuration files for routing and tools
+- `src/feishubot/ai/configs/`: sample TOML configuration files for routing and tools
 - `src/feishubot/ai/memory/`: memory store scaffolding for future conversation state
 
 ## Runtime Flow
@@ -49,5 +49,5 @@
 
 - Add new providers under `src/feishubot/ai/providers/`.
 - Add new tools under `src/feishubot/ai/tools/builtins/` and register them in the builtin registry.
-- Add new routing or tool defaults in `src/feishubot/ai/configs/tools.example.yaml`.
+- Add new routing or tool defaults in `src/feishubot/ai/configs/tools.example.toml`.
 - Add new prompts in `src/feishubot/ai/prompts/system/`.

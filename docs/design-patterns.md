@@ -37,7 +37,7 @@ This makes the runtime predictable and keeps tool discovery separate from tool e
 
 ## 4. Configuration-Driven Behavior
 
-Several runtime decisions are controlled by settings or YAML config.
+Several runtime decisions are controlled by settings or TOML config.
 
 - `Settings.active_llm_config()` resolves the active provider model.
 - `AI_TOOLS_CONFIG_PATH` can point to a tool routing file.

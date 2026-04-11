@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import json
+import tomllib
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -37,26 +39,47 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 60.0
     llm_system_prompt: str = "You are a helpful assistant."
     llm_active_model: str = ""
-    llm_models_json: str = ""
+    llm_models_config_path: str = ""
     ai_tools_config_path: str = ""
 
+    def _load_models_from_toml(self, config_path: Path) -> tuple[str, dict[str, dict[str, Any]]]:
+        if not config_path.exists():
+            raise ValueError(f"LLM models config not found: {config_path}")
+
+        raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("LLM models config must be a TOML table")
+
+        default_model = str(raw.get("default_model", "")).strip()
+        models_raw = raw.get("models")
+        if not isinstance(models_raw, dict) or not models_raw:
+            raise ValueError("LLM models config must include a non-empty [models] table")
+
+        models: dict[str, dict[str, Any]] = {}
+        for model_name, model_config in models_raw.items():
+            if not isinstance(model_name, str) or not model_name.strip():
+                continue
+            if not isinstance(model_config, dict):
+                raise ValueError(f"model '{model_name}' must be a TOML table")
+            models[model_name.strip()] = dict(model_config)
+
+        if not models:
+            raise ValueError("LLM models config does not define any valid models")
+
+        return default_model, models
+
     def _resolve_from_model_map(self) -> ActiveLLMConfig | None:
-        raw = self.llm_models_json.strip()
-        if not raw:
+        models_config_path = self.llm_models_config_path.strip()
+        if not models_config_path:
             return None
 
-        try:
-            models = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"LLM_MODELS_JSON is not valid JSON: {exc}") from exc
+        resolved_path = Path(models_config_path).expanduser().resolve()
+        default_model, models = self._load_models_from_toml(resolved_path)
 
-        if not isinstance(models, dict) or not models:
-            raise ValueError("LLM_MODELS_JSON must be a non-empty JSON object")
-
-        active_name = self.llm_active_model.strip() or next(iter(models))
+        active_name = self.llm_active_model.strip() or default_model or next(iter(models))
         active_config = models.get(active_name)
         if not isinstance(active_config, dict):
-            raise ValueError(f"active model '{active_name}' not found in LLM_MODELS_JSON")
+            raise ValueError(f"active model '{active_name}' not found in model config")
 
         provider = str(active_config.get("provider", "openai_compatible"))
         base_url = str(active_config.get("base_url", ""))

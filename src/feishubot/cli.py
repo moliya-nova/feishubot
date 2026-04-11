@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import tomllib
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -181,8 +182,6 @@ def _format_env_value(value: str) -> str:
 
 
 def _format_env_assignment(key: str, value: str) -> str:
-    if key == "LLM_MODELS_JSON" and "\n" in value:
-        return f"{key}='{value}'"
     return f"{key}={_format_env_value(value)}"
 
 
@@ -202,31 +201,90 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
         "LLM_CHAT_PATH",
         "LLM_TIMEOUT_SECONDS",
         "LLM_SYSTEM_PROMPT",
-        "LLM_MODELS_JSON",
+        "LLM_MODELS_CONFIG_PATH",
+        "AI_TOOLS_CONFIG_PATH",
     ]
 
     lines = [_format_env_assignment(key, values.get(key, "")) for key in keys_in_order]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _parse_models_json(raw: str) -> dict[str, dict[str, str]]:
-    value = raw.strip()
-    if not value:
-        return {}
+def _resolve_models_config_path(config_value: str, env_path: Path) -> Path:
+    raw = config_value.strip() or "models.toml"
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = (env_path.parent / path).resolve()
+    else:
+        path = path.resolve()
+    return path
+
+
+def _load_models_config(path: Path) -> tuple[str, dict[str, dict[str, str]]]:
+    if not path.exists():
+        return "", {}
 
     try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return {}
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, OSError):
+        return "", {}
 
-    if not isinstance(parsed, dict):
-        return {}
+    if not isinstance(raw, dict):
+        return "", {}
+
+    default_model = str(raw.get("default_model", "")).strip()
+    models_raw = raw.get("models")
+    if not isinstance(models_raw, dict):
+        return default_model, {}
 
     models: dict[str, dict[str, str]] = {}
-    for name, config in parsed.items():
-        if isinstance(name, str) and isinstance(config, dict):
-            models[name] = {k: str(v) for k, v in config.items()}
-    return models
+    for name, config in models_raw.items():
+        if not isinstance(name, str) or not isinstance(config, dict):
+            continue
+        model_name = name.strip()
+        if not model_name:
+            continue
+        models[model_name] = {k: str(v) for k, v in config.items()}
+
+    return default_model, models
+
+
+def _escape_toml_string(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _dump_models_config(default_model: str, models: dict[str, dict[str, str]]) -> str:
+    lines: list[str] = []
+    if default_model.strip():
+        lines.append(f"default_model = {_escape_toml_string(default_model.strip())}")
+        lines.append("")
+
+    for model_name, config in models.items():
+        lines.append(f"[models.{_escape_toml_string(model_name)}]")
+        ordered_fields = [
+            "provider",
+            "base_url",
+            "api_key",
+            "model",
+            "chat_path",
+            "timeout_seconds",
+            "system_prompt",
+        ]
+        for field_name in ordered_fields:
+            if field_name in config:
+                lines.append(f"{field_name} = {_escape_toml_string(str(config[field_name]))}")
+
+        for field_name, field_value in config.items():
+            if field_name not in ordered_fields:
+                lines.append(f"{field_name} = {_escape_toml_string(str(field_value))}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _write_models_config(path: Path, default_model: str, models: dict[str, dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_dump_models_config(default_model, models), encoding="utf-8")
 
 
 def _run_setup(args: argparse.Namespace) -> None:
@@ -279,7 +337,8 @@ def _run_setup(args: argparse.Namespace) -> None:
         "LLM_CHAT_PATH": current.get("LLM_CHAT_PATH", "/v1/chat/completions"),
         "LLM_TIMEOUT_SECONDS": current.get("LLM_TIMEOUT_SECONDS", "60"),
         "LLM_SYSTEM_PROMPT": current.get("LLM_SYSTEM_PROMPT", "You are a helpful assistant."),
-        "LLM_MODELS_JSON": current.get("LLM_MODELS_JSON", ""),
+        "LLM_MODELS_CONFIG_PATH": current.get("LLM_MODELS_CONFIG_PATH", "models.toml"),
+        "AI_TOOLS_CONFIG_PATH": current.get("AI_TOOLS_CONFIG_PATH", ""),
     }
 
     if provider_value == "openai_compatible":
@@ -296,7 +355,8 @@ def _run_setup(args: argparse.Namespace) -> None:
             current.get("LLM_SYSTEM_PROMPT", "You are a helpful assistant."),
         )
 
-        models = _parse_models_json(current.get("LLM_MODELS_JSON", ""))
+        models_config_path = _resolve_models_config_path(values["LLM_MODELS_CONFIG_PATH"], env_path)
+        _, models = _load_models_config(models_config_path)
         models[selected_preset_key] = {
             "provider": "openai_compatible",
             "base_url": values["LLM_BASE_URL"],
@@ -307,7 +367,7 @@ def _run_setup(args: argparse.Namespace) -> None:
             "system_prompt": values["LLM_SYSTEM_PROMPT"],
         }
         values["LLM_ACTIVE_MODEL"] = selected_preset_key
-        values["LLM_MODELS_JSON"] = json.dumps(models, ensure_ascii=True, indent=2)
+        _write_models_config(models_config_path, selected_preset_key, models)
 
         print("Applied model preset:")
         print(f"  provider: {selected_preset_key}")
@@ -318,7 +378,7 @@ def _run_setup(args: argparse.Namespace) -> None:
 
     if provider_value == "echo":
         values["LLM_ACTIVE_MODEL"] = ""
-        values["LLM_MODELS_JSON"] = ""
+        values["LLM_MODELS_CONFIG_PATH"] = ""
 
     env_path.parent.mkdir(parents=True, exist_ok=True)
     _write_env_file(env_path, values)
@@ -332,14 +392,17 @@ def _run_setup(args: argparse.Namespace) -> None:
 def _run_model_switch(args: argparse.Namespace) -> None:
     env_path = Path(args.env_file).expanduser().resolve()
     current = _load_env_file(env_path)
-    models = _parse_models_json(current.get("LLM_MODELS_JSON", ""))
+    models_config_value = current.get("LLM_MODELS_CONFIG_PATH", "models.toml")
+    models_config_path = _resolve_models_config_path(models_config_value, env_path)
+    default_model, models = _load_models_config(models_config_path)
 
     if not models:
-        print("No models found in LLM_MODELS_JSON. Run 'feishubot setup' first.")
+        print(f"No models found in: {models_config_path}")
+        print("Run 'feishubot setup' first.")
         return
 
     model_names = list(models.keys())
-    active = current.get("LLM_ACTIVE_MODEL", "")
+    active = current.get("LLM_ACTIVE_MODEL", "") or default_model
     if active not in models:
         active = model_names[0]
 
@@ -377,7 +440,8 @@ def _run_model_switch(args: argparse.Namespace) -> None:
     current["LLM_SYSTEM_PROMPT"] = selected_config.get(
         "system_prompt", "You are a helpful assistant."
     )
-    current["LLM_MODELS_JSON"] = json.dumps(models, ensure_ascii=True, indent=2)
+    current["LLM_MODELS_CONFIG_PATH"] = models_config_value
+    _write_models_config(models_config_path, selected_name, models)
 
     _write_env_file(env_path, current)
 

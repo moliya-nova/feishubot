@@ -1,8 +1,0 @@
-default_provider: openai_compatible
-providers:
-  openai_compatible:
-    model: gpt-4o-mini
-  anthropic:
-    model: claude-3-7-sonnet-latest
-  gemini:
-    model: gemini-2.5-pro

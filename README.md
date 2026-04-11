@@ -69,7 +69,7 @@ feishubot setup
 
 会进入交互式向导，快速选择 LLM 提供商（`echo` / `openai_compatible`）并写入 `.env`。
 当前内置大模型预设：`qwen`、`kimi`、`deepseek`。
-该向导会写入 `LLM_MODELS_JSON` 和 `LLM_ACTIVE_MODEL`，用于维护多个模型并快速切换。
+该向导会写入 `LLM_MODELS_CONFIG_PATH` 和 `LLM_ACTIVE_MODEL`，用于维护多个模型并快速切换。
 
 ## 3. 先在终端跑通对话
 
@@ -95,9 +95,11 @@ feishubot-chat --user-id demo-user
 
 工具层配置（可选）：
 
-- 通过 `AI_TOOLS_CONFIG_PATH` 指向 YAML 文件（可参考 `src/feishubot/ai/configs/tools.example.yaml`）
+- 默认读取 `tools.default.toml`（仓库根目录，真实运行配置）
+- 通过 `AI_TOOLS_CONFIG_PATH` 覆盖配置文件路径（可参考 `src/feishubot/ai/configs/tools.example.toml`）
 - 支持 `enabled_tools` 控制可用工具集合
 - 支持 `routing.<tool>.timeout_seconds` 覆盖工具默认超时
+- 支持 `terminal.blocked_commands` 定义禁用命令片段（命中即拒绝执行）
 
 ## 4. 再调通 HTTP 大模型接口
 
@@ -111,7 +113,7 @@ feishubot-chat --user-id demo-user
 多模型模式（推荐）：
 
 - `LLM_ACTIVE_MODEL=qwen`
-- `LLM_MODELS_JSON={...}`（包含多个模型的 `base_url` / `api_key` / `model`）
+- `LLM_MODELS_CONFIG_PATH=src/feishubot/ai/configs/model_routes.example.toml`
 
 切换模型时只需修改 `LLM_ACTIVE_MODEL`，然后重启 `feishubot chat` 或 gateway 进程。
 

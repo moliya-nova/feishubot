@@ -1,0 +1,19 @@
+default_model = "qwen"
+
+[models.qwen]
+provider = "openai_compatible"
+base_url = "https://dashscope.aliyuncs.com"
+api_key = "sk-xxx"
+model = "qwen-plus"
+chat_path = "/compatible-mode/v1/chat/completions"
+timeout_seconds = "60"
+system_prompt = "You are a helpful assistant."
+
+[models.deepseek]
+provider = "openai_compatible"
+base_url = "https://api.deepseek.com"
+api_key = "sk-yyy"
+model = "deepseek-chat"
+chat_path = "/v1/chat/completions"
+timeout_seconds = "60"
+system_prompt = "You are a helpful assistant."

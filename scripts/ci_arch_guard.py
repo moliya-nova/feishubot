@@ -65,8 +65,11 @@ def _changed_name_status(diff_range: str) -> list[tuple[str, str]]:
     return rows
 
 
-def _check_merge_commits(diff_range: str, violations: list[str]) -> None:
-    merges = _run(["git", "rev-list", "--merges", diff_range])
+def _check_merge_commits(base_ref: str, violations: list[str]) -> None:
+    # For merge-commit policy, only inspect commits introduced by PR branch.
+    # Using symmetric range (base...HEAD) may include base-side merges and cause false positives.
+    head_only_range = f"{base_ref}..HEAD"
+    merges = _run(["git", "rev-list", "--merges", head_only_range])
     if merges:
         violations.append(
             "检测到 PR 分支包含 merge commit。请改用 rebase 保持线性历史，避免引入噪音提交。"
@@ -188,7 +191,7 @@ def main() -> int:
 
     violations: list[str] = []
 
-    _check_merge_commits(diff_range, violations)
+    _check_merge_commits(base_ref, violations)
     _check_top_level_module_additions(name_status, violations)
     _check_session_history_placement(changed_paths, violations)
     _check_legacy_llm_imports(changed_paths, violations)

@@ -1,0 +1,17 @@
+enabled_tools = ["web_search", "calculator", "terminal"]
+
+[routing.web_search]
+timeout_seconds = 20
+
+[routing.calculator]
+timeout_seconds = 5
+
+[routing.terminal]
+timeout_seconds = 30
+
+[terminal]
+blocked_commands = [
+  "rm -rf /",
+  "shutdown",
+  "reboot"
+]
