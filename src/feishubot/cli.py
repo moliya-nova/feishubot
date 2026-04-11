@@ -378,6 +378,7 @@ def _run_setup(args: argparse.Namespace) -> None:
 
     if provider_value == "echo":
         values["LLM_ACTIVE_MODEL"] = ""
+        values["LLM_MODELS_CONFIG_PATH"] = ""
 
     env_path.parent.mkdir(parents=True, exist_ok=True)
     _write_env_file(env_path, values)

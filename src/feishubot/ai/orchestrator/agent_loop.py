@@ -163,7 +163,7 @@ class AgentLoop:
 
             is_terminal_poll = (
                 tool_name == "terminal"
-                and str(arguments.get("mode", "")).strip() == "get_async_result"
+                and str(arguments.get("mode", "")).strip().lower() == "get_async_result"
             )
             poll_task_id = str(arguments.get("task_id", "")).strip()
             tool_status = str(tool_result.get("status", "")).strip().lower()

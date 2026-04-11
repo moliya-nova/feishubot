@@ -220,6 +220,16 @@ class ToolRuntime:
                     "name": state.name,
                     "status": "running",
                 }
+            except Exception as exc:  # noqa: BLE001
+                payload = {
+                    "invocation_id": invocation_id,
+                    "name": state.name,
+                    "status": "failed",
+                    "error": str(exc),
+                }
+                if clear_after_read:
+                    self._async_invocations.pop(invocation_id, None)
+                return payload
 
         if not state.task.done():
             return {

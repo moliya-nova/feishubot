@@ -113,15 +113,15 @@ class TerminalCommandTool(Tool):
         timeout_seconds = float(arguments.get("timeout_seconds", 60.0))
         task_id = str(arguments.get("task_id") or "").strip()
 
+        cwd_path = None
         if mode in {"sync", "start_async"}:
             self._validate_command(command, allow_dangerous=allow_dangerous)
 
-        cwd_value = arguments.get("cwd")
-        cwd_path = None
-        if cwd_value:
-            cwd_path = Path(str(cwd_value)).expanduser().resolve()
-            if not cwd_path.exists():
-                raise ValueError(f"cwd does not exist: {cwd_path}")
+            cwd_value = arguments.get("cwd")
+            if cwd_value:
+                cwd_path = Path(str(cwd_value)).expanduser().resolve()
+                if not cwd_path.exists():
+                    raise ValueError(f"cwd does not exist: {cwd_path}")
 
         if mode == "sync":
             return await self._run_command(
