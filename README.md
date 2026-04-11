@@ -32,6 +32,22 @@ feishubot/
 
 ## 2. 快速开始
 
+一键下载并运行（推荐）：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/wsmxd/feishubot/main/scripts/bootstrap.sh)
+```
+
+可选参数：
+
+```bash
+# 下载后仅初始化，不自动启动
+bash <(curl -fsSL https://raw.githubusercontent.com/wsmxd/feishubot/main/scripts/bootstrap.sh) -- --run none
+
+# 启动 HTTP 网关
+bash <(curl -fsSL https://raw.githubusercontent.com/wsmxd/feishubot/main/scripts/bootstrap.sh) -- --run gateway
+```
+
 1. 创建并激活虚拟环境
 2. 安装uv依赖：
 
