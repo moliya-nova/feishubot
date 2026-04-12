@@ -12,10 +12,10 @@ from feishubot.ai.tools.base import Tool
 class SoulMemoryArguments(BaseModel):
     user_name: str | None = Field(default=None, max_length=120)
     assistant_name: str | None = Field(default=None, max_length=120)
-    habits: str | None = Field(default=None, max_length=2000)
-    hobbies: str | None = Field(default=None, max_length=2000)
-    preferences: str | None = Field(default=None, max_length=2000)
-    notes: str | None = Field(default=None, max_length=4000)
+    habits: str | None = Field(default=None, max_length=120)
+    hobbies: str | None = Field(default=None, max_length=120)
+    preferences: str | None = Field(default=None, max_length=120)
+    notes: str | None = Field(default=None, max_length=120)
 
 
 class SoulMemoryTool(Tool):
@@ -117,7 +117,7 @@ class SoulMemoryTool(Tool):
             sections.extend(
                 [
                     "",
-                    f"## 最近更新（保留最近 {cls._MAX_RECENT_UPDATES} 条）",
+                    "## 最近更新",
                     "",
                 ]
             )

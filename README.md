@@ -114,6 +114,7 @@ feishubot-chat --user-id demo-user
 - 默认读取 `tools.default.toml`（仓库根目录，真实运行配置）
 - 通过 `AI_TOOLS_CONFIG_PATH` 覆盖配置文件路径（可参考 `src/feishubot/ai/configs/tools.example.toml`）
 - 支持 `enabled_tools` 控制可用工具集合
+- `soul_memory` 默认关闭，需要明确开启后才允许模型写入 `SOUL.md`
 - 支持 `routing.<tool>.timeout_seconds` 覆盖工具默认超时
 - 支持 `terminal.blocked_commands` 定义禁用命令片段（命中即拒绝执行）
 

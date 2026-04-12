@@ -1,4 +1,7 @@
-enabled_tools = ["web_search", "calculator", "terminal", "soul_memory"]
+# WARNING: `soul_memory` is intentionally disabled in this example config.
+# It persists user-controlled content into a system prompt file and should
+# only be enabled after explicit administrative opt-in.
+enabled_tools = ["web_search", "calculator", "terminal"]
 
 [routing.web_search]
 timeout_seconds = 20
