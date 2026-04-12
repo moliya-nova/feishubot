@@ -60,6 +60,13 @@ def _normalize_text(value: Any) -> str | None:
     return normalized or None
 
 
+def _decode_request_body(body: bytes) -> str:
+    try:
+        return body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="request body must be valid utf-8") from exc
+
+
 async def _extract_chat_request(request: Request) -> ChatRequest:
     message: str | None = _coerce_first_value(request.query_params.getlist("message"))
     if message is None:
@@ -75,7 +82,7 @@ async def _extract_chat_request(request: Request) -> ChatRequest:
         content_type = request.headers.get("content-type", "").lower()
         if "application/json" in content_type:
             try:
-                payload = json.loads(body.decode("utf-8"))
+                payload = json.loads(_decode_request_body(body))
             except json.JSONDecodeError as exc:
                 raise HTTPException(status_code=400, detail="invalid JSON body") from exc
 
@@ -91,7 +98,7 @@ async def _extract_chat_request(request: Request) -> ChatRequest:
             elif isinstance(payload, str):
                 message = _normalize_text(payload) or message
         elif "application/x-www-form-urlencoded" in content_type:
-            form_values = parse_qs(body.decode("utf-8"), keep_blank_values=True)
+            form_values = parse_qs(_decode_request_body(body), keep_blank_values=True)
             message = (
                 _coerce_first_value(form_values.get("message"))
                 or _coerce_first_value(form_values.get("text"))
@@ -101,7 +108,7 @@ async def _extract_chat_request(request: Request) -> ChatRequest:
             user_id = _coerce_first_value(form_values.get("user_id")) or user_id
             system_prompt = _coerce_first_value(form_values.get("system_prompt")) or system_prompt
         elif message is None:
-            raw_text = body.decode("utf-8").strip()
+            raw_text = _decode_request_body(body).strip()
             if raw_text:
                 message = raw_text
 
